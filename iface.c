@@ -55,6 +55,7 @@ PyObject *netinfo_list_active_devs(PyObject *self, PyObject *args)
     ret = ioctl(fd, SIOCGIFCONF, &ifc);
     if (ret < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
+        close(fd);
         return NULL;
     }
     ifend = ifs + (ifc.ifc_len / sizeof(struct ifreq));
@@ -64,6 +65,7 @@ PyObject *netinfo_list_active_devs(PyObject *self, PyObject *args)
         _PyTuple_Resize(&tuple, i);
         PyTuple_SET_ITEM(tuple, i++-1, Py_BuildValue("s", ifr->ifr_name));
     }
+    close(fd);
     return tuple;
 }
 
@@ -93,32 +95,40 @@ PyObject *netinfo_get_addr(PyObject *self, PyObject *args, int cmd)
     char *dev;
     struct sockaddr_in *sin;
     char hwaddr[18];
+    PyObject *rval;
+
     fd = socket(AF_INET, SOCK_DGRAM, 0); /* open a socket to examine */
     if (fd < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
         return NULL;
     }
     ret = PyArg_ParseTuple(args, "s", &dev); /* parse argument */
-    if (!ret)
+    if (!ret) {
+        close(fd);
         return NULL;
+    }
     memset(&ifreq, 0, sizeof(struct ifreq));
     strncpy(ifreq.ifr_name, dev, IFNAMSIZ-1);
     ifreq.ifr_addr.sa_family = AF_INET;
     ret = ioctl(fd, cmd, &ifreq, sizeof(struct ifreq));
     if (ret < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
+        close(fd);
         return NULL;
     }
     switch (cmd) {
         case SIOCGIFADDR:
             sin = (struct sockaddr_in *)&(ifreq.ifr_ifru.ifru_addr);
-            return Py_BuildValue("s", inet_ntoa(sin->sin_addr));
+            rval = Py_BuildValue("s", inet_ntoa(sin->sin_addr));
+            break;
         case SIOCGIFNETMASK:
             sin = (struct sockaddr_in *)&(ifreq.ifr_ifru.ifru_netmask);
-            return Py_BuildValue("s", inet_ntoa(sin->sin_addr));
+            rval = Py_BuildValue("s", inet_ntoa(sin->sin_addr));
+            break;
         case SIOCGIFBRDADDR:
             sin = (struct sockaddr_in *)&(ifreq.ifr_ifru.ifru_broadaddr);
-            return Py_BuildValue("s", inet_ntoa(sin->sin_addr));
+            rval = Py_BuildValue("s", inet_ntoa(sin->sin_addr));
+            break;
         case SIOCGIFHWADDR:
             snprintf(hwaddr, 18, "%02X:%02X:%02X:%02X:%02X:%02X", 
                         (unsigned char)ifreq.ifr_ifru.ifru_hwaddr.sa_data[0],
@@ -127,9 +137,14 @@ PyObject *netinfo_get_addr(PyObject *self, PyObject *args, int cmd)
                         (unsigned char)ifreq.ifr_ifru.ifru_hwaddr.sa_data[3],
                         (unsigned char)ifreq.ifr_ifru.ifru_hwaddr.sa_data[4],
                         (unsigned char)ifreq.ifr_ifru.ifru_hwaddr.sa_data[5]);
-            return Py_BuildValue("s", hwaddr);
+            rval = Py_BuildValue("s", hwaddr);
+            break;
+        default:
+            rval = NULL;
+            break;
     }
-    return NULL;
+    close(fd);
+    return rval;
 }
 
 PyObject *netinfo_get_ip(PyObject *self, PyObject *args)
@@ -175,6 +190,7 @@ PyObject *netinfo_set_state(PyObject *self, PyObject *args)
     ret = ioctl(fd, SIOCGIFFLAGS, &ifreq);
     if (ret < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
+        close(fd);
         return NULL;
     }
     if (state)
@@ -184,8 +200,10 @@ PyObject *netinfo_set_state(PyObject *self, PyObject *args)
     ret = ioctl(fd, SIOCSIFFLAGS, &ifreq);
     if (ret < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
+        close(fd);
         return NULL;
     }
+    close(fd);
     return Py_None;
 }
 
@@ -223,8 +241,10 @@ PyObject *netinfo_set_addr(PyObject *self, PyObject *args, int cmd)
     ret = ioctl(fd, cmd, &ifreq, sizeof(struct ifreq));
     if (ret < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
+        close(fd);
         return NULL;
     }
+    close(fd);
     return Py_None;
 }
 
