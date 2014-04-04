@@ -45,8 +45,10 @@ PyObject *netinfo_adddel_route(PyObject *self, PyObject *args, int action)
         return NULL;
     }
     ret = PyArg_ParseTuple(args, "ssss", &dev, &dest, &gateway, &netmask); /* parse argument */
-    if (!ret)
+    if (!ret) {
+        close(fd);
         return NULL;
+    }
     /* set up route entry */ 
     memset(&rtentry, 0, sizeof(struct rtentry));
     if (strlen(dev) > 0) /* null if no device specified (os guesses) */
@@ -73,8 +75,10 @@ PyObject *netinfo_adddel_route(PyObject *self, PyObject *args, int action)
     ret = ioctl(fd, action ? SIOCADDRT : SIOCDELRT, &rtentry);
     if (ret < 0) {
         PyErr_SetFromErrno(PyExc_Exception);
+        close(fd);
         return NULL;
     }
+    close(fd);
     return Py_None;
 }
 
@@ -102,6 +106,7 @@ PyObject *netinfo_get_routes(PyObject *self, PyObject *args)
     }
     if (!fgets(buffer, 1024, file)) {
         PyErr_SetFromErrno(PyExc_Exception);
+        fclose(file);
         return NULL;
     }
 //     strtok_r(buffer, " \t", &tok);
@@ -139,6 +144,7 @@ PyObject *netinfo_get_routes(PyObject *self, PyObject *args)
         _PyTuple_Resize(&tuple, i);
         PyTuple_SET_ITEM(tuple, i++-1, dict);
     }
+    fclose(file);
     return tuple;
 }
 
